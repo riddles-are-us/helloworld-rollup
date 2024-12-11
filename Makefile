@@ -17,7 +17,7 @@ clean:
 	rm -rf $(INSTALL_DIR)/application_bg.wasm.d.ts
 
 run:
-	node --trace-warnings ./ts/node_modules/zkwasm-ts-server/src/service.js
+	node ./ts/src/service.js
 
 deploy:
 	docker build --file ./deploy/service.docker -t zkwasm-server . --network=host

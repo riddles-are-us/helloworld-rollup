@@ -66,7 +66,7 @@ impl State {
 
     pub fn preempt() -> bool {
         let state = unsafe {&STATE};
-        return state.counter >= 20;
+        return state.counter % 30 == 0;
     }
 
     pub fn flush_settlement() -> Vec<u8> {
@@ -127,8 +127,16 @@ impl Transaction {
     }
 
     pub fn inc_counter(&self, _pkey: &[u64; 4]) -> u32 {
-        //let player = HelloWorldPlayer::get(pkey);
-        todo!()
+        let pid = HelloWorldPlayer::pkey_to_pid(_pkey);
+        let player = HelloWorldPlayer::get_from_pid(&pid);
+        match player {  
+            Some(mut p) => {
+                p.data.counter += 1;
+                p.store();
+                0
+            },
+            None => ERROR_PLAYER_NOT_EXIST
+        }
     }
 
     pub fn process(&self, pkey: &[u64; 4], _rand: &[u64; 4]) -> u32 {
