@@ -2,10 +2,8 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, jupiter/cicd ]
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
 
 env:
   REGISTRY: ghcr.io
@@ -32,6 +30,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          file: Dockerfile.ci
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Get WASM MD5
         id: wasm-md5
         run: echo "MD5=$(cat wasm.md5)" >> $GITHUB_OUTPUT
@@ -47,12 +55,19 @@ jobs:
             type=semver,pattern={{version}}
             type=sha,format=long
 
-      - name: Build and push
+      - name: Build and push final image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          file: Dockerfile.ci
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}-${{ steps.wasm-md5.outputs.MD5 }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository }}-${{ steps.wasm-md5.outputs.MD5 }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Notify build result
+        if: always()
+        run: |
+          echo "Image built and pushed: ${{ env.REGISTRY }}/${{ github.repository }}-${{ steps.wasm-md5.outputs.MD5 }}"
