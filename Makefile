@@ -25,5 +25,5 @@ clean:
 run:
 	node ./ts/src/service.js
 
-deploy:
-	docker build --file ./deploy/service.docker -t zkwasm-server . --network=host
+
+

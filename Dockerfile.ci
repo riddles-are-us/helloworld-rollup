@@ -1,0 +1,55 @@
+# Build stage
+FROM rustlang/rust:nightly-2023-06-01-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    pkg-config \
+    nodejs \
+    npm \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install wasm-pack
+RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+WORKDIR /app
+
+# Copy only necessary files for dependency installation
+COPY Cargo.toml Cargo.lock rust-toolchain ./
+COPY ts/package*.json ts/
+COPY ts/tsconfig.json ts/
+
+# Create dummy source files to cache dependencies
+RUN mkdir src && echo "fn main() {}" > src/lib.rs
+RUN cd ts && npm ci
+
+# Copy actual source code
+COPY . .
+
+# Build the application
+RUN make build
+RUN md5sum ts/node_modules/zkwasm-ts-server/src/application/application_bg.wasm | \
+    awk '{ print $1 }' | tr 'a-z' 'A-Z' > wasm.md5
+
+# Production stage
+FROM node:slim
+
+WORKDIR /app
+
+# Copy only necessary files from builder
+COPY --from=builder /app/ts/node_modules ./ts/node_modules
+COPY --from=builder /app/ts/src ./ts/src
+COPY --from=builder /app/src/admin.pubkey ./src/admin.pubkey
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Run as non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+USER appuser
+
+EXPOSE 3000
+CMD ["node", "./ts/src/service.js"]
