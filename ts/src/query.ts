@@ -19,7 +19,7 @@ async function main() {
   let state:any = await rpc.queryState(account);
   let data = JSON.parse(state.data);
   console.log(data);
-  let config = await rpc.query_config();
+  let config = await rpc.queryConfig();
   console.log("config", config);
 }
 

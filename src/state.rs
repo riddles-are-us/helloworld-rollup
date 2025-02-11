@@ -47,7 +47,7 @@ impl State {
         0
     }
 
-    pub fn store(&self) {
+    pub fn store() {
     }
 
     pub fn initialize() {
@@ -70,9 +70,7 @@ impl State {
     }
 
     pub fn flush_settlement() -> Vec<u8> {
-        let data = SettlementInfo::flush_settlement();
-        unsafe {STATE.store()};
-        data
+        SettlementInfo::flush_settlement()
     }
 
     pub fn tick(&mut self) {
@@ -86,6 +84,7 @@ pub static mut STATE: State  = State {
 
 pub struct Transaction {
     pub command: u64,
+    pub nonce: u64,
     pub data: Vec<u64>,
 }
 
@@ -104,29 +103,32 @@ impl Transaction {
            _ => "Unknown"
         }
     }
-    pub fn decode(params: [u64; 4]) -> Self {
+    pub fn decode(params: &[u64]) -> Self {
+        zkwasm_rust_sdk::dbg!("params {:?}\n", params);
         let command = params[0] & 0xff;
-        let data = vec![params[1], params[2], params[3]]; // pkey[0], pkey[1], amount
+        let nonce = params[0] >> 16;
+        let mut data = vec![];
         Transaction {
             command,
+            nonce,
             data,
         }
     }
-    pub fn install_player(&self, pkey: &[u64; 4]) -> u32 {
+    pub fn install_player(&self, pkey: &[u64; 4]) -> Result<(), u32> {
         zkwasm_rust_sdk::dbg!("install \n");
         let pid = HelloWorldPlayer::pkey_to_pid(pkey);
         let player = HelloWorldPlayer::get_from_pid(&pid);
         match player {
-            Some(_) => ERROR_PLAYER_ALREADY_EXIST,
+            Some(_) => Err(ERROR_PLAYER_ALREADY_EXIST),
             None => {
                 let player = HelloWorldPlayer::new_from_pid(pid);
                 player.store();
-                0
+                Ok(())
             }
         }
     }
 
-    pub fn inc_counter(&self, _pkey: &[u64; 4]) -> u32 {
+    pub fn inc_counter(&self, _pkey: &[u64; 4]) -> Result<(), u32> {
         // Convert player's public key to player ID
         let pid = HelloWorldPlayer::pkey_to_pid(_pkey);
         // Try to get the player instance using the ID
@@ -141,24 +143,28 @@ impl Transaction {
                 // Store the updated state
                 p.store();
                 // Return 0 to indicate success
-                0
+                Ok(())
             },
             // If player doesn't exist, return error
-            None => ERROR_PLAYER_NOT_EXIST
+            None => Err(ERROR_PLAYER_NOT_EXIST)
         }
     }
 
-    pub fn process(&self, pkey: &[u64; 4], _rand: &[u64; 4]) -> u32 {
-        match self.command {
+    pub fn process(&self, pkey: &[u64; 4], _rand: &[u64; 4]) -> Vec<u64> {
+        let b = match self.command {
             AUTOTICK => {
-                unsafe { STATE.tick() };
-                return 0;
+                zkwasm_rust_sdk::dbg!("to run tick\n");
+                unsafe {
+                    STATE.tick();
+                }
+                0
             },
-            INSTALL_PLAYER => self.install_player(pkey),
-            INC_COUNTER => self.inc_counter(pkey),
+            INSTALL_PLAYER => self.install_player(pkey).map_or_else(|e| e, |_| 0),
+            INC_COUNTER => self.inc_counter(pkey).map_or_else(|e| e, |_| 0),
             _ => {
-                return 0
+                0
             }
-        }
+        };
+        vec![b as u64]
     }
 }
